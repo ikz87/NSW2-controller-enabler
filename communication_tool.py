@@ -632,6 +632,7 @@ def main():
             
             if choice == '1':
                 enabler.connect_usb()
+                enabler.disconnect()
             elif choice == '2':
                 enabler.connect_hid()
             elif choice == '3':
