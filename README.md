@@ -2,17 +2,34 @@
 Based on [HHL's enabler](https://handheldlegend.github.io/procon2tool/). Currently only works on linux because I don't use windows but PR submissions are more than welcome
 
 ## Usage
-Run `enable_hid.py` when your controller is connected via USB, that's pretty much it. It will enable HID input for Nintendo Switch 2 Gamecube/Pro controllers, but analog trigger axies are missing for the GCC's
+Run `enable_hid.py` when your controller is connected via USB, that's pretty much it. It will enable HID input for Nintendo Switch 2 Gamecube/Pro controllers.
 
-Joystick axies are not well calibrated, you'll have to set calibrations correctly where you're gonna use it (Dolphin provides this if you're curious)
+A virtual controller is created. This is for setting up stick calibration and analog triggers.
 
-Additional tools are provided in `communication_tool.py` for trying out sending data to the controller
+## Permissions
+To run this, your user must be in the `input` group
 
-## Automatization
-Create a udev rule at /etc/udev/rules.d/99-nsw2-controller.rules with the following contents:
+Then, create a udev rule at `/etc/udev/rules.d/50-nintendo-switch.rules` with the following contents:
+```
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2066", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2067", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2073", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2066", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2067", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2069", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2073", MODE="0666"
+```
+
+and reload your rules with `sudo udevadm control --reload-rules`
+
+
+## Automation
+Create a udev rule at `/etc/udev/rules.d/99-nsw2-controller.rules` with the following contents:
 ```
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTRS{idProduct}=="2066|2067|2069|2073", RUN+="<repository path>/enable_hid.py"
 ```
+and reload your rules with `sudo udevadm control --reload-rules`
 
 Make the script executable with `chmod +x <repository path>/enable_hid.py`
 
