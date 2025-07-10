@@ -187,35 +187,27 @@ class StickCalibrator:
             raise ValueError("Calibration string must contain 32 values.")
 
     def calibrate(self, x: float, y: float) -> tuple[float, float]:
-        # Convert to polar coordinates
-        magnitude = math.sqrt(x**2 + y**2)/1.3
+        magnitude = math.sqrt(x**2 + y**2)/1.3 # Arbitrary value to make these things work with dolpgin's calibration values
         if magnitude < self.deadzone:
             return 0.0, 0.0
 
         angle = math.atan2(y, x)
-
-        # Normalize angle to [0, 2*pi)
         if angle < 0:
             angle += 2 * math.pi
 
-        # Find the two nearest calibration radii
         angle_percent = angle / (2 * math.pi)
         float_index = angle_percent * 32
         index1 = int(float_index) % 32
         index2 = (index1 + 1) % 32
         fraction = float_index - int(float_index)
 
-        # Linearly interpolate between the two radii
         r1 = self.radii[index1]
         r2 = self.radii[index2]
         calibrated_radius_pct = r1 + (r2 - r1) * fraction
 
-        # The calibrated radius is a percentage of the ideal radius (100)
-        # We scale our current magnitude by the inverse of this percentage
         scale_factor = 100.0 / calibrated_radius_pct
         corrected_magnitude = magnitude * scale_factor
 
-        # Convert back to cartesian coordinates
         corrected_x = corrected_magnitude * math.cos(angle)
         corrected_y = corrected_magnitude * math.sin(angle)
 
@@ -227,6 +219,25 @@ def unpack_12bit_triplet(data):
     a = data[0] | ((data[1] & 0x0F) << 8)
     b = (data[1] >> 4) | (data[2] << 4)
     return a, b
+
+
+def remap_trigger_value(value: int) -> int:
+    """Remaps raw trigger value (36-240) to full range (0-255)."""
+    min_in, max_in = 36, 240  # 0x24, 0xF0
+    min_out, max_out = 0, 255
+
+    # Clamp the input value to the expected range
+    clamped_value = max(min_in, min(value, max_in))
+
+    # Calculate the percentage of the press within the input range
+    in_range = max_in - min_in
+    percentage = (clamped_value - min_in) / in_range
+
+    # Scale the percentage to the output range
+    out_range = max_out - min_out
+    remapped_value = int(percentage * out_range) + min_out
+
+    return remapped_value
 
 
 def main():
@@ -254,12 +265,11 @@ def main():
         hid_device.open(vendor_id, product_id)
         print("HID device found!")
 
-        # --- Setup Calibration ---
         main_stick_cal_str = "61.28 59.10 59.32 61.42 64.61 60.89 58.93 58.86 57.96 54.91 53.94 55.08 58.76 55.50 52.94 53.47 56.88 54.62 54.06 55.79 59.53 58.33 56.91 58.23 60.40 61.90 61.76 63.32 68.50 63.34 61.14 60.96"
         c_stick_cal_str = "54.74 52.52 52.24 54.58 58.28 55.75 54.01 54.52 55.03 53.14 52.31 53.07 56.86 52.77 51.99 52.16 53.86 52.02 51.43 53.31 56.98 53.29 52.09 52.24 55.01 53.96 53.79 56.05 59.98 56.49 54.20 54.46"
         main_calibrator = StickCalibrator(main_stick_cal_str)
         c_calibrator = StickCalibrator(c_stick_cal_str)
-        print("Analog stick calibrators created.")
+        print("Analog stick and trigger calibrators created.")
 
         events = (
             uinput.BTN_A, uinput.BTN_B, uinput.BTN_X, uinput.BTN_Y,
@@ -286,8 +296,8 @@ def main():
             buttons = payload[0x2:0x5]
             stick1 = payload[0x5:0x8]
             stick2 = payload[0x8:0xB]
-            left_trigger = payload[0x0C]
-            right_trigger = payload[0x0D]
+            left_trigger_raw = payload[0x0C]
+            right_trigger_raw = payload[0x0D]
 
             # --- Buttons (unchanged) ---
             vdev.emit(uinput.BTN_B, bool(buttons[0] & 0x01))
@@ -315,25 +325,18 @@ def main():
             # --- Sticks (with calibration) ---
             x1_raw, y1_raw = unpack_12bit_triplet(stick1)
             x2_raw, y2_raw = unpack_12bit_triplet(stick2)
-
-            # Center the raw values (0-4095 -> -2048 to 2047)
             x1_centered, y1_centered = x1_raw - 2048, y1_raw - 2048
             x2_centered, y2_centered = x2_raw - 2048, y2_raw - 2048
-
-            # Apply calibration
             x1_cal, y1_cal = main_calibrator.calibrate(x1_centered, y1_centered)
             x2_cal, y2_cal = c_calibrator.calibrate(x2_centered, y2_centered)
-
-            # Scale, clamp, and emit to virtual device
-            # Note: Y axes are inverted to match standard gamepad behavior
             vdev.emit(uinput.ABS_X, max(-32768, min(32767, int(x1_cal * 16))))
             vdev.emit(uinput.ABS_Y, max(-32768, min(32767, int(-y1_cal * 16))))
             vdev.emit(uinput.ABS_RX, max(-32768, min(32767, int(x2_cal * 16))))
             vdev.emit(uinput.ABS_RY, max(-32768, min(32767, int(-y2_cal * 16))))
 
-            # --- Triggers (unchanged) ---
-            vdev.emit(uinput.ABS_Z, left_trigger)
-            vdev.emit(uinput.ABS_RZ, right_trigger)
+            # --- Triggers (with remapping) ---
+            vdev.emit(uinput.ABS_Z, remap_trigger_value(left_trigger_raw))
+            vdev.emit(uinput.ABS_RZ, remap_trigger_value(right_trigger_raw))
 
             vdev.syn()
 
