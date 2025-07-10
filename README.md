@@ -6,6 +6,8 @@ Run `enable_hid.py` when your controller is connected via USB, that's pretty muc
 
 Joystick axies are not well calibrated, you'll have to set calibrations correctly where you're gonna use it (Dolphin provides this if you're curious)
 
+Additional tools are provided in `communication_tool.py` for trying out sending data to the controller
+
 ## Automatization
 Create a udev rule at /etc/udev/rules.d/99-nsw2-controller.rules with the following contents:
 ```
